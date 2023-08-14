@@ -1,35 +1,27 @@
-import axios, { AxiosResponse } from 'axios';
+import axios from 'axios';
 
 interface IJenkinsJob {
     jobName: string;
     params: object;
 }
 
-export class PulumiClass extends Object {
-    PULUMI_ACCESS_TOKEN: string;
-    AWS_ACCESS_KEY_ID: string;
-    AWS_SECRET_ACCESS_KEY: string;
-    PULUMI_STACK: string;
 
-    constructor(pulumiAccessToken: string, awsAccessKeyId: string, awsSecretAccessKey: string, pulumiStack: string) {
-        super();
-        this.AWS_ACCESS_KEY_ID = awsAccessKeyId;
-        this.PULUMI_ACCESS_TOKEN = pulumiAccessToken;
-        this.AWS_SECRET_ACCESS_KEY = awsSecretAccessKey;
-        this.PULUMI_STACK = pulumiStack;
-    }
-}
-
-export abstract class JenkinsJob implements IJenkinsJob {
+abstract class JenkinsJob implements IJenkinsJob {
     jobName: string;
     params: object;
     folder?: string;
-    constructor(jobName: string, params: object, folder?: string) {
+    constructor(jobName: string, folder: string, params: object,) {
         this.jobName = jobName;
         this.params = params;
         this.folder = folder;
     }
 }
+
+//concrete class for use in index.ts
+export class PanoramJenkinsJob extends JenkinsJob {
+
+}
+
 interface IJenkins {
     url: string;
     apiKey: string;
@@ -38,10 +30,11 @@ interface IJenkins {
     getLastBuildStatus(job: JenkinsJob): Promise<string>;
     getAllPipelines(): Promise<string>;
     listJobsInFolder(folder: string): Promise<string>;
-    getCrumb(): Promise<any>;
+
+    inspectQueuedBuilds(): Promise<void>;
 }
 
-export abstract class Jenkins implements IJenkins {
+abstract class Jenkins implements IJenkins {
     url: string;
     apiKey: string;
     username: string;
@@ -51,29 +44,7 @@ export abstract class Jenkins implements IJenkins {
         this.apiKey = apiKey;
         this.username = username;
     }
-    listJobsInFolder(folder: string): Promise<string> {
-        throw new Error('Method not implemented.');
-    }
-    getCrumb(): Promise<any> {
-        throw new Error('Method not implemented.');
-    }
-    getAllPipelines(): Promise<string> {
-        throw new Error('Method not implemented.');
-    }
-    triggerBuild(job: JenkinsJob): Promise<void> {
-        throw new Error('Method not implemented.');
-    }
-    getLastBuildStatus(job: JenkinsJob): Promise<string> {
-        throw new Error('Method not implemented.');
-    }
-}
-
-export class PanoramJenkinsJob extends JenkinsJob {
-
-}
-
-export class PanoramJenkins extends Jenkins {
-    getCrumb(): Promise<any> {
+    protected getAuthorisationCrumb(): Promise<any> {
         // Panoram Jenkins server has CSRF protection enabled, get the crumb first
         return new Promise(async (resolve) => {
             // Panoram Jenkins server has CSRF protection enabled, get the crumb first
@@ -84,24 +55,21 @@ export class PanoramJenkins extends Jenkins {
                 }
             });
             const crumbData = crumbResponse.data;
-            console.log("getCrumb", "status", crumbResponse.status);
+            console.log("getAuthorisationCrumb", "status", crumbResponse.status);
             resolve(crumbData);
         })
     }
     triggerBuild(job: JenkinsJob): Promise<any> {
-
         return new Promise(async (resolve) => {
             try {
-                const crumbData = await this.getCrumb();
-                let url = `${this.url}/job/${job.jobName}/buildWithParameters`;
-                if(job.folder) {
-                    url  = `${this.url}/job/${job.folder}/job/${job.jobName}/buildWithParameters`;
-                }
+                const crumbData = await this.getAuthorisationCrumb();
+                let url = `${this.url}/job/${job.folder}/job/${job.jobName}/buildWithParameters`;
                 // Trigger the Jenkins build
                 const response = await axios.post(
                     url,
-                    job.params,
+                    null,
                     {
+                        params: job.params,
                         auth: {
                             username: this.username,
                             password: this.apiKey
@@ -115,6 +83,7 @@ export class PanoramJenkins extends Jenkins {
                 console.log('Build triggered:', response.status);
                 resolve(response.data);
 
+
             } catch (error) {
                 console.error('Error triggering Jenkins build:', error);
                 resolve(error);
@@ -122,14 +91,10 @@ export class PanoramJenkins extends Jenkins {
         });
     }
     getLastBuildStatus(job: JenkinsJob): Promise<string> {
-        let url = `${this.url}/job/${job.jobName}/lastBuild/api/json`;
-        console.log("!!! getLastBuildStatus", job.folder);
-        if(job.folder) {
-            url  = `${this.url}/job/${job.folder}/job/${job.jobName}/lastBuild/api/json`;
-        }
         return new Promise(async (resolve) => {
             try {
-                const crumbData = await this.getCrumb();
+                const crumbData = await this.getAuthorisationCrumb();
+                let url = `${this.url}/job/${job.folder}/job/${job.jobName}/lastBuild/api/json`;
                 const response = await axios.get(url, {
                     auth: {
                         username: this.username,
@@ -148,12 +113,11 @@ export class PanoramJenkins extends Jenkins {
         });
     }
     getAllPipelines(): Promise<string> {
-        const url = `${this.url}/api/json`;
 
         return new Promise(async (resolve) => {
             try {
-                const crumbData = await this.getCrumb();
-
+                const crumbData = await this.getAuthorisationCrumb();
+                const url = `${this.url}/api/json`;
                 const response = await axios.get(url, {
                     auth: {
                         username: this.username,
@@ -178,10 +142,9 @@ export class PanoramJenkins extends Jenkins {
     }
     listJobsInFolder(folder: string): Promise<string> {
         const url = `${this.url}/job/${folder}/api/json`;
-
         return new Promise(async (resolve) => {
             try {
-                const crumbData = await this.getCrumb();
+                const crumbData = await this.getAuthorisationCrumb();
 
                 const response = await axios.get(url, {
                     auth: {
@@ -205,4 +168,49 @@ export class PanoramJenkins extends Jenkins {
             }
         });
     }
+    inspectQueuedBuilds(): Promise<void> {
+        const url = `${this.url}/queue/api/json`;
+        return new Promise(async (resolve) => {
+            try {
+                const crumbData = await this.getAuthorisationCrumb();
+
+                const response = await axios.get(url, {
+                    auth: {
+                        username: this.username,
+                        password: this.apiKey
+                    },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        [crumbData.crumbRequestField]: crumbData.crumb
+                    }
+                });
+                const items = response.data.items;
+                for (const item of items) {
+                    console.log(`ID: ${item.id}`);
+                    console.log(`Task Name: ${item.task.name}`);
+                    console.log(`Blocked: ${item.blocked}`);
+                    console.log(`Buildable: ${item.buildable}`);
+                    console.log(`In Queue Since: ${new Date(item.inQueueSince).toLocaleString()}`);
+                    console.log(`Reason: ${item.why}`);
+                    console.log('------');
+                }
+
+                if (Array.isArray(items) && items.length == 0) {
+                    console.log("There are no queued builds");
+                    console.log('------');
+                }
+
+                resolve();
+            } catch (error) {
+                throw error;
+            }
+
+        });
+    }
+}
+
+//concrete class for use in index.ts
+export class PanoramJenkins extends Jenkins {
+
+
 }
