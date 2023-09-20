@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 
-function compareJSON(json1: any, json2: any, path: string[] = []): { missingInFirst: string[], missingInSecond: string[], differingProperties: string[], differingPropertyTypes: string[] } {
+export function compareJSON(json1: any, json2: any, path: string[] = []): { missingInFirst: string[], missingInSecond: string[], differingProperties: string[], differingPropertyTypes: string[] } {
     const missingInFirst: string[] = [];
     const missingInSecond: string[] = [];
     const differingProperties: string[] = [];
@@ -60,16 +60,9 @@ function compareJSON(json1: any, json2: any, path: string[] = []): { missingInFi
     };
 }
 
-function compareJSONFiles(file1: string, file2: string) {
-    const json1 = JSON.parse(fs.readFileSync(file1, 'utf-8'));
-    const json2 = JSON.parse(fs.readFileSync(file2, 'utf-8'));
+export function compareJSONFiles(filePath1: string, filePath2: string) {
+    const json1 = JSON.parse(fs.readFileSync(filePath1, 'utf-8'));
+    const json2 = JSON.parse(fs.readFileSync(filePath2, 'utf-8'));
 
     return compareJSON(json1, json2);
 }
-
-// Example usage:
-const differences = compareJSONFiles('/Users/paulryan/Documents/projects.nosync/panoram/appregistrationscript/output/output.json', '/Users/paulryan/Documents/projects.nosync/panoram/appregistrationscript/input/manifest.json');
-console.log('Properties missing in first file:', differences.missingInFirst);
-console.log('Properties missing in second file:', differences.missingInSecond);
-console.log('Properties differing between files:', differences.differingProperties);
-console.log('Properties differing types between files:', differences.differingPropertyTypes);
