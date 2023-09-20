@@ -37,8 +37,8 @@ let params = {
     'DOMAIN': 'panoram.co',
     'AWS_REGION': AWS_REGION,
     'ZONE_ID': 'Z101009110XXPVF7X94YK',
-    'ORG_ID': 'totum',
-    'CERTIFICATE_ARN': 'arn:aws:acm:eu-west-2:659554164570:certificate/fcb8eb47-f5d9-4550-a004-1f3ed5caa7f2'
+    'ORG_ID': 'panoram',
+    'CERTIFICATE_ARN': 'arn:aws:acm:eu-west-2:659554164570:certificate/YOURCERTHERE'
 };
 
 const mergedObj = { ...pc, ...params };

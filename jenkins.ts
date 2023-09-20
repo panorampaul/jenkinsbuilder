@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
 
 interface IJenkinsJob {
     jobName: string;
@@ -26,9 +26,11 @@ interface IJenkins {
     url: string;
     apiKey: string;
     username: string;
+    headers: AxiosRequestConfig['headers'];
+    auth?: AxiosRequestConfig['auth'];
     triggerBuild(job: JenkinsJob): Promise<void>;
     getLastBuildStatus(job: JenkinsJob): Promise<string>;
-    getAllPipelines(): Promise<string>;
+    getAllJobs(): Promise<string[]>;
     listJobsInFolder(folder: string): Promise<string>;
 
     inspectQueuedBuilds(): Promise<void>;
@@ -38,11 +40,23 @@ abstract class Jenkins implements IJenkins {
     url: string;
     apiKey: string;
     username: string;
+    crumbData: any;
+    headers: AxiosRequestConfig['headers'];
+    auth?: AxiosRequestConfig['auth'];
 
     constructor(url: string, apiKey: string, username: string) {
         this.url = url;
         this.apiKey = apiKey;
         this.username = username;
+        this.crumbData = this.getAuthorisationCrumb();
+        this.auth = {
+            username: this.username,
+            password: this.apiKey
+        },
+            this.headers = {
+                'Content-Type': 'application/json',
+                [this.crumbData.crumbRequestField]: this.crumbData.crumb
+            }
     }
     protected getAuthorisationCrumb(): Promise<any> {
         // Panoram Jenkins server has CSRF protection enabled, get the crumb first
@@ -55,14 +69,12 @@ abstract class Jenkins implements IJenkins {
                 }
             });
             const crumbData = crumbResponse.data;
-            console.log("getAuthorisationCrumb", "status", crumbResponse.status);
             resolve(crumbData);
         })
     }
     triggerBuild(job: JenkinsJob): Promise<any> {
         return new Promise(async (resolve) => {
             try {
-                const crumbData = await this.getAuthorisationCrumb();
                 let url = `${this.url}/job/${job.folder}/job/${job.jobName}/buildWithParameters`;
                 // Trigger the Jenkins build
                 const response = await axios.post(
@@ -70,13 +82,8 @@ abstract class Jenkins implements IJenkins {
                     null,
                     {
                         params: job.params,
-                        auth: {
-                            username: this.username,
-                            password: this.apiKey
-                        },
-                        headers: {
-                            [crumbData.crumbRequestField]: crumbData.crumb
-                        }
+                        auth: this.auth,
+                        headers: this.headers
                     }
                 );
 
@@ -93,48 +100,13 @@ abstract class Jenkins implements IJenkins {
     getLastBuildStatus(job: JenkinsJob): Promise<string> {
         return new Promise(async (resolve) => {
             try {
-                const crumbData = await this.getAuthorisationCrumb();
                 let url = `${this.url}/job/${job.folder}/job/${job.jobName}/lastBuild/api/json`;
                 const response = await axios.get(url, {
-                    auth: {
-                        username: this.username,
-                        password: this.apiKey
-                    },
-                    headers: {
-                        'Content-Type': 'application/json',
-                        [crumbData.crumbRequestField]: crumbData.crumb
-                    }
+                    auth: this.auth,
+                    headers: this.headers
                 });
                 resolve(response.data);
 
-            } catch (error) {
-                throw error;
-            }
-        });
-    }
-    getAllPipelines(): Promise<string> {
-
-        return new Promise(async (resolve) => {
-            try {
-                const crumbData = await this.getAuthorisationCrumb();
-                const url = `${this.url}/api/json`;
-                const response = await axios.get(url, {
-                    auth: {
-                        username: this.username,
-                        password: this.apiKey
-                    },
-                    headers: {
-                        'Content-Type': 'application/json',
-                        [crumbData.crumbRequestField]: crumbData.crumb
-                    }
-                });
-
-                if (response.data && response.data.jobs) {
-
-                    resolve(response.data.jobs.map((job: any) => job.name));
-                } else {
-                    resolve('[]');
-                }
             } catch (error) {
                 throw error;
             }
@@ -144,17 +116,10 @@ abstract class Jenkins implements IJenkins {
         const url = `${this.url}/job/${folder}/api/json`;
         return new Promise(async (resolve) => {
             try {
-                const crumbData = await this.getAuthorisationCrumb();
 
                 const response = await axios.get(url, {
-                    auth: {
-                        username: this.username,
-                        password: this.apiKey
-                    },
-                    headers: {
-                        'Content-Type': 'application/json',
-                        [crumbData.crumbRequestField]: crumbData.crumb
-                    }
+                    auth: this.auth,
+                    headers: this.headers
                 });
 
                 if (response.data && response.data.jobs) {
@@ -172,17 +137,9 @@ abstract class Jenkins implements IJenkins {
         const url = `${this.url}/queue/api/json`;
         return new Promise(async (resolve) => {
             try {
-                const crumbData = await this.getAuthorisationCrumb();
-
                 const response = await axios.get(url, {
-                    auth: {
-                        username: this.username,
-                        password: this.apiKey
-                    },
-                    headers: {
-                        'Content-Type': 'application/json',
-                        [crumbData.crumbRequestField]: crumbData.crumb
-                    }
+                    auth: this.auth,
+                    headers: this.headers
                 });
                 const items = response.data.items;
                 for (const item of items) {
@@ -205,6 +162,21 @@ abstract class Jenkins implements IJenkins {
                 throw error;
             }
 
+        });
+    }
+    getAllJobs(): Promise<string[]> {
+        return new Promise<string[]>(async (resolve) => {
+            try {
+                const response = await axios.get(`${this.url}/api/json?tree=jobs[name]`, {
+                    auth: this.auth,
+                    headers: this.headers
+                });
+                const data = response.data.jobs.map((job: any) => job.name);
+                resolve(data);
+
+            } catch (error) {
+                throw error;
+            }
         });
     }
 }
