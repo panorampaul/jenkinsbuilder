@@ -1,5 +1,5 @@
 import { PanoramJenkinsJob, PanoramJenkins } from './jenkins';
-import { PulumiClass} from './pulumi';
+import { PulumiClass } from './pulumi';
 import yargs from 'yargs';
 
 const JENKINS_URL = 'https://ci2.panoram.co';
@@ -10,6 +10,8 @@ const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID ?? '';
 const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY ?? '';
 const PULUMI_STACK = process.env.PULUMI_STACK ?? '';
 const AWS_REGION = process.env.AWS_REGION ?? 'eu-west-2';
+const AWS_CERTIFICATE_ARN = process.env.AWS_CERTIFICATE_ARN ?? '';
+const ORG_ID = process.env.ORG_ID ?? 'panoram';
 
 
 const parser = yargs
@@ -37,6 +39,7 @@ const parser = yargs
 
 async function main() {
     let pj = new PanoramJenkins(JENKINS_URL, JENKINS_TOKEN, JENKINS_USERNAME);
+    let pc = new PulumiClass(PULUMI_ACCESS_TOKEN, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, PULUMI_STACK);
     var argv = await parser.argv;
     if (argv.inspect) {
         pj.inspectQueuedBuilds().then((_) => console.log("Inspection complete")).catch((err) => console.error(err));
@@ -61,22 +64,24 @@ async function main() {
                 });
         }
     } else if (argv.lb) {
-      
-        let pc = new PulumiClass(PULUMI_ACCESS_TOKEN, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, PULUMI_STACK);
 
-        let params = {
-            'DOMAIN': 'panoram.co',
-            'AWS_REGION': AWS_REGION,
-            'ZONE_ID': 'Z101009110XXPVF7X94YK',
-            'ORG_ID': 'robertwalters',
-            'CERTIFICATE_ARN': 'arn:aws:acm:eu-west-2:659554164570:certificate/2e2d9f3b-d50c-4f95-968e-a96021beab32'
-        };
+        if (AWS_CERTIFICATE_ARN === '') {
+            console.error("Set your aws certificate path as an environment variable AWS_CERTIFICATE_ARN")
+        } else {
+            let params = {
+                'DOMAIN': 'panoram.co',
+                'AWS_REGION': AWS_REGION,
+                'ZONE_ID': 'Z101009110XXPVF7X94YK',
+                'ORG_ID': ORG_ID,
+                'CERTIFICATE_ARN': AWS_CERTIFICATE_ARN
+            };
 
-        const mergedObj = { ...pc, ...params };
-        let job = new PanoramJenkinsJob('apps_org_load_balancer', 'infra', mergedObj);
-        pj.triggerBuild(job)
-            .then((status) => console.log(status))
-            .catch((err) => console.error(err));
+            const mergedObj = { ...pc, ...params };
+            let job = new PanoramJenkinsJob('apps_org_load_balancer', 'infra', mergedObj);
+            pj.triggerBuild(job)
+                .then((status) => console.log(status))
+                .catch((err) => console.error(err));
+        }
     } else {
         console.log("Please provide a valid command. Use --help for usage instructions.");
     }
